@@ -1,0 +1,63 @@
+sources:
+- name: OpenAI Blog
+  type: rss
+  url: https://openai.com/news/rss.xml
+  weight: 1.3
+- name: Google DeepMind
+  type: rss
+  url: https://deepmind.google/discover/blog/rss.xml
+  weight: 1.2
+- name: Anthropic News
+  type: rss
+  url: https://www.anthropic.com/news/rss.xml
+  weight: 1.2
+- name: Hacker News AI
+  type: rss
+  url: https://hnrss.org/newest?q=AI
+  weight: 1.0
+- name: Habr AI
+  type: rss
+  url: https://habr.com/ru/rss/hubs/artificial_intelligence/articles/?fl=ru
+  weight: 1.0
+- name: VC AI
+  type: rss
+  url: https://vc.ru/rss/all
+  weight: 0.8
+- name: DDPA KB
+  type: website
+  url: https://ddpa.ru/kb/
+  weight: 1.1
+- name: Telegram Durov
+  type: telegram
+  url: https://t.me/s/durov
+  channel: durov
+  weight: 0.8
+- name: www.koc.com.tw
+  type: website
+  url: https://www.koc.com.tw/archives/category/ai/ai-news
+  weight: 1.0
+- name: журнал Яндекс Практикума
+  type: website
+  url: https://thecode.media/news/
+  weight: 1.0
+- name: Apify AI Hype Tracker
+  type: apify_actor
+  url: wheat_tourist/ai-hype-tracker
+  actor_id: wheat_tourist/ai-hype-tracker
+  query: AI agents, LLM, vibe coding, OpenAI, Claude, developer tools
+  max_items: 20
+  weight: 1.5
+- name: Apify Google News AI
+  type: apify_actor
+  url: futurizerush/google-news-scraper
+  actor_id: futurizerush/google-news-scraper
+  query: AI agents OR LLM OR vibe coding OR OpenAI OR Claude
+  max_items: 20
+  weight: 1.3
+- name: Apify Hacker News AI
+  type: apify_actor
+  url: benthepythondev/hacker-news-intelligence
+  actor_id: benthepythondev/hacker-news-intelligence
+  query: AI agents LLM developer tools
+  max_items: 20
+  weight: 1.4

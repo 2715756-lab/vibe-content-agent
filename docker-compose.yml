@@ -1,0 +1,14 @@
+services:
+  vibe-agent:
+    build: .
+    container_name: vibe-content-agent
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "8088:8088"
+    volumes:
+      - ./data:/app/data
+      - ./config:/app/config
+      - ./content:/app/content
+      - ./docs:/app/docs
