@@ -59,6 +59,19 @@ viral_state = {
     "error": "",
     "updated_at": "",
 }
+studio_state = {
+    "running": False,
+    "progress": 0,
+    "stage": "ожидание",
+    "mode": "",
+    "run_id": None,
+    "draft_id": None,
+    "item_id": None,
+    "ideas": [],
+    "readiness": {},
+    "error": "",
+    "updated_at": "",
+}
 
 
 def active_style_text() -> str:
@@ -1150,6 +1163,68 @@ a { color: #1d4ed8; }
 .agent-role h3 { margin: 0 0 6px; font-size: 17px; }
 .agent-role p { margin: 0; color: #5f574f; line-height: 1.45; }
 .policy-strip { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.studio-shell { display: grid; grid-template-columns: 360px minmax(0, 1fr); gap: 18px; align-items: start; }
+.studio-command {
+  position: sticky;
+  top: 18px;
+  background: #111827;
+  color: #fff;
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 18px 45px rgba(17, 24, 39, 0.22);
+}
+.studio-command h2 { margin: 0 0 10px; font-size: 26px; }
+.studio-command p { color: #d7f5ef; line-height: 1.5; }
+.studio-command label { color: #f8f4ec; }
+.studio-command input, .studio-command select, .studio-command textarea {
+  width: 100%;
+  background: rgba(255,255,255,0.96);
+}
+.studio-submit { width: 100%; margin-top: 14px; text-align: center; }
+.studio-main { display: grid; gap: 14px; }
+.studio-card {
+  background: #fff;
+  border: 1px solid #e0d8ca;
+  border-radius: 8px;
+  padding: 18px;
+  box-shadow: 0 10px 28px rgba(43, 34, 25, 0.06);
+}
+.studio-progress {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  gap: 18px;
+  align-items: center;
+}
+.eyebrow {
+  margin: 0 0 8px;
+  color: #2a9d8f;
+  font-size: 12px;
+  font-weight: 850;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.check-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 8px; }
+.check-grid label {
+  margin: 0;
+  padding: 9px;
+  border: 1px solid rgba(255,255,255,0.18);
+  border-radius: 8px;
+  background: rgba(255,255,255,0.08);
+  font-size: 14px;
+}
+.readiness-bar {
+  height: 12px;
+  border-radius: 999px;
+  background: #eee6da;
+  overflow: hidden;
+  margin: 12px 0;
+}
+.readiness-bar span {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #2a9d8f, #e9c46a, #e76f51);
+}
+.result-card h2 { margin-bottom: 8px; }
 @media (max-width: 900px) {
   .page { padding: 18px; }
   .hero { display: block; }
@@ -1159,6 +1234,10 @@ a { color: #1d4ed8; }
   .control-shell { grid-template-columns: 1fr; }
   .control-rail { position: static; }
   .control-card, .control-card.wide { grid-column: 1 / -1; }
+  .studio-shell { grid-template-columns: 1fr; }
+  .studio-command { position: static; }
+  .studio-progress { grid-template-columns: 1fr; }
+  .check-grid { grid-template-columns: 1fr; }
 }
 """
 
@@ -1184,6 +1263,7 @@ def page_shell(title: str, body: str, subtitle: str = "") -> str:
             </div>
             <nav class="nav">
               <a class="btn dark" href="/admin/control">Центр</a>
+              <a class="btn primary" href="/admin/studio">Студия</a>
               <a class="btn" href="/admin/topics">Темы</a>
               <a class="btn" href="/admin/sources">Источники</a>
               <a class="btn" href="/admin/apify/results">Apify</a>
@@ -1516,6 +1596,653 @@ def control_center() -> str:
       </script>
     """
     return page_shell("Центр управления", body, "Единый пульт поиска, источников, публикаций и здоровья интеграций.")
+
+
+@app.get("/admin/studio", response_class=HTMLResponse)
+def publication_studio() -> str:
+    items = agent.storage.list_items(limit=6)
+    drafts = agent.storage.list_drafts()[:5]
+    studio_runs = [run for run in agent.storage.list_agent_runs(limit=20) if run.get("kind") == "studio"][:5]
+    latest_result = render_studio_result(studio_runs[0]) if studio_runs else ""
+    modes = [
+        ("ai_news", "AI новости", "Свежая новость с источниками и практическим выводом."),
+        ("viral", "Вирусная тема", "Выбирает тему по сигналам спроса, конфликта и обсуждаемости."),
+        ("github", "GitHub обзор", "Упаковывает репозиторий или инструмент в статью/пост."),
+        ("project", "Мой проект", "Превращает личный vibe-coding опыт в историю."),
+        ("fast_post", "Быстрый пост", "Короткий Telegram/VK материал без длинной статьи."),
+    ]
+    mode_options = "\n".join(
+        f'<option value="{value}">{escape(label)} — {escape(hint)}</option>' for value, label, hint in modes
+    )
+    body = f"""
+      <section class="studio-shell">
+        <aside class="studio-command">
+          <p class="eyebrow">одно окно результата</p>
+          <h2>Что выпускаем сегодня?</h2>
+          <p>Выбери направление, задай тему или оставь поле пустым. Агент соберёт источники, выберет угол, сделает черновик, версии под площадки, research report и обложку.</p>
+          <form id="studioForm" class="studio-form" method="post" action="/admin/studio/start">
+            <label>Режим</label>
+            <select name="mode">{mode_options}</select>
+            <label>Тема, URL или направление</label>
+            <textarea name="topic" style="min-height: 120px;" placeholder="Например: AI-агенты для малого бизнеса, новый GitHub-репозиторий, мой путь создания агента, новости Codex..."></textarea>
+            <label>Тон результата</label>
+            <select name="tone">
+              <option value="author">В моём стиле, живо и практично</option>
+              <option value="bold">Смелее, больше конфликта и позиции</option>
+              <option value="calm">Спокойно, экспертно, без хайпа</option>
+              <option value="telegram">Коротко, как сильный Telegram-пост</option>
+            </select>
+            <label>Площадки</label>
+            <div class="check-grid">
+              <label><input type="checkbox" name="destinations" value="telegram" checked> Telegram</label>
+              <label><input type="checkbox" name="destinations" value="blog" checked> Блог</label>
+              <label><input type="checkbox" name="destinations" value="vk"> VK</label>
+              <label><input type="checkbox" name="destinations" value="vc"> VC</label>
+              <label><input type="checkbox" name="destinations" value="dzen"> Дзен</label>
+            </div>
+            <label>Что собрать</label>
+            <div class="check-grid">
+              <label><input type="checkbox" name="make_research" value="1" checked> Research</label>
+              <label><input type="checkbox" name="make_variants" value="1" checked> Версии</label>
+              <label><input type="checkbox" name="make_image" value="1" checked> Картинка</label>
+              <label><input type="checkbox" name="make_compare" value="1"> 3 варианта хука</label>
+            </div>
+            <button class="primary studio-submit" type="submit">Собрать готовый материал</button>
+          </form>
+        </aside>
+        <div class="studio-main">
+          <section class="studio-card">
+            <div class="studio-progress">
+              <div id="studioClock" class="clock-progress" style="--progress: {studio_state['progress']}%; --deg: {float(studio_state['progress']) * 3.6};"><span id="studioProgress">{studio_state['progress']}%</span></div>
+              <div>
+                <p class="eyebrow">статус сборки</p>
+                <h2 id="studioStage">{escape(studio_state.get('stage') or 'ожидание')}</h2>
+                <p id="studioDetails">{escape(studio_status_details())}</p>
+                <div class="actions">
+                  <a id="studioDraftLink" class="btn primary" href="{f'/drafts/{studio_state["draft_id"]}' if studio_state.get("draft_id") else '#'}" {'style="display:none;"' if not studio_state.get("draft_id") else ''}>Открыть результат</a>
+                  <a class="btn" href="/admin/editorial">Журнал прогонов</a>
+                </div>
+              </div>
+            </div>
+          </section>
+          {latest_result}
+          <section class="studio-card">
+            <h2>Свежие темы для старта</h2>
+            <div class="control-list">{''.join(render_studio_item(item) for item in items) or '<p>Тем пока нет. Запусти сбор.</p>'}</div>
+          </section>
+          <section class="studio-card">
+            <h2>Последние черновики</h2>
+            <div class="control-list">{''.join(render_control_draft(draft) for draft in drafts) or '<p>Черновиков пока нет.</p>'}</div>
+          </section>
+        </div>
+      </section>
+      <script>
+        const studioForm = document.getElementById('studioForm');
+        function setStudioClock(progress) {{
+          const value = Number(progress || 0);
+          const clock = document.getElementById('studioClock');
+          clock.style.setProperty('--progress', `${{value}}%`);
+          clock.style.setProperty('--deg', String(value * 3.6));
+          document.getElementById('studioProgress').textContent = `${{value}}%`;
+        }}
+        async function pollStudio() {{
+          const response = await fetch('/admin/studio/status');
+          const state = await response.json();
+          setStudioClock(state.progress);
+          document.getElementById('studioStage').textContent = state.stage || 'ожидание';
+          document.getElementById('studioDetails').textContent = state.error || state.details || '';
+          const link = document.getElementById('studioDraftLink');
+          if (state.draft_id) {{
+            link.href = `/drafts/${{state.draft_id}}`;
+            link.style.display = '';
+          }}
+          const button = studioForm ? studioForm.querySelector('button[type="submit"]') : null;
+          if (button) {{
+            button.disabled = Boolean(state.running);
+            button.textContent = state.running ? 'Собираю материал...' : 'Собрать готовый материал';
+          }}
+          if (state.running) setTimeout(pollStudio, 1200);
+        }}
+        if (studioForm) {{
+          studioForm.addEventListener('submit', async (event) => {{
+            event.preventDefault();
+            await fetch('/admin/studio/start', {{ method: 'POST', body: new FormData(studioForm) }});
+            pollStudio();
+          }});
+        }}
+        pollStudio();
+      </script>
+    """
+    return page_shell("Студия публикации", body, "Тема → источники → рерайт → картинка → версии → одобрение.")
+
+
+@app.post("/admin/studio/start")
+async def start_publication_studio(
+    mode: str = Form("ai_news"),
+    topic: str = Form(""),
+    tone: str = Form("author"),
+    destinations: Annotated[list[str] | None, Form()] = None,
+    make_research: str = Form(""),
+    make_variants: str = Form(""),
+    make_image: str = Form(""),
+    make_compare: str = Form(""),
+) -> dict:
+    if studio_state["running"]:
+        return studio_status_payload()
+    selected = [item for item in (destinations or []) if item in DESTINATION_PLATFORMS]
+    if not selected:
+        selected = ["telegram", "blog"]
+    objective = f"Studio: {mode}; topic={topic.strip() or 'auto'}; destinations={','.join(selected)}"
+    run_id = agent.storage.create_agent_run("studio", objective)
+    studio_state.update(
+        {
+            "running": True,
+            "progress": 3,
+            "stage": "ставлю задачу",
+            "mode": mode,
+            "run_id": run_id,
+            "draft_id": None,
+            "item_id": None,
+            "ideas": [],
+            "readiness": {},
+            "error": "",
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+    )
+    asyncio.create_task(
+        execute_publication_studio(
+            run_id,
+            mode=mode,
+            topic=topic,
+            tone=tone,
+            destinations=selected,
+            make_research=bool(make_research),
+            make_variants=bool(make_variants),
+            make_image=bool(make_image),
+            make_compare=bool(make_compare),
+        )
+    )
+    return studio_status_payload()
+
+
+@app.get("/admin/studio/status")
+def studio_status() -> dict:
+    return studio_status_payload()
+
+
+def studio_status_payload() -> dict:
+    payload = dict(studio_state)
+    payload["ideas"] = payload.get("ideas", [])[:5] if not payload.get("running") else []
+    payload["details"] = studio_status_details()
+    return payload
+
+
+def studio_status_details() -> str:
+    if studio_state.get("error"):
+        return str(studio_state["error"])
+    if studio_state.get("draft_id"):
+        score = studio_state.get("readiness", {}).get("score")
+        if score is not None:
+            return f"Черновик #{studio_state['draft_id']} готов. Готовность: {score}%."
+        return f"Черновик #{studio_state['draft_id']} создан, пакет ещё собирается."
+    if studio_state.get("running"):
+        return f"Run #{studio_state.get('run_id')} выполняется."
+    return "Запусти сборку, чтобы получить публикационный пакет."
+
+
+async def execute_publication_studio(
+    run_id: int,
+    mode: str,
+    topic: str,
+    tone: str,
+    destinations: list[str],
+    make_research: bool,
+    make_variants: bool,
+    make_image: bool,
+    make_compare: bool,
+) -> None:
+    selected_item: dict | None = None
+    draft_id: int | None = None
+    warnings: list[str] = []
+    try:
+        update_studio_state(8, "ищу и обновляю источники")
+        scout_step = agent.storage.create_agent_step(
+            run_id, "Source Scout", "search_only", "Собираю источники и свежие темы."
+        )
+        try:
+            result = await asyncio.wait_for(agent.collect_and_rank(), timeout=90)
+            agent.storage.finish_agent_step(
+                scout_step,
+                "success",
+                f"Источники обновлены: найдено {result.get('fetched', 0)}, новых {result.get('inserted', 0)}.",
+                result,
+            )
+        except Exception as exc:  # noqa: BLE001
+            warnings.append(f"Сбор источников: {exc}")
+            agent.storage.finish_agent_step(
+                scout_step,
+                "warning",
+                "Не все источники обновились, продолжаю по сохранённой базе.",
+                {"error": str(exc)},
+            )
+
+        update_studio_state(22, "ранжирую темы и ищу угол")
+        trend_step = agent.storage.create_agent_step(
+            run_id, "Trend Analyst", "compute_only", "Выбираю тему и угол подачи."
+        )
+        candidates = select_studio_candidates(topic, mode)
+        if not candidates:
+            agent.storage.finish_agent_step(
+                trend_step,
+                "failed",
+                "Не нашёл подходящих тем. Добавь источник или задай более широкую тему.",
+                {"topic": topic, "mode": mode},
+            )
+            raise RuntimeError("Не нашёл подходящих тем для студии.")
+        ideas = [studio_idea_from_item(item, mode, topic) for item in candidates[:5]]
+        selected_item = candidates[0]
+        studio_state.update({"item_id": selected_item["id"], "ideas": ideas})
+        agent.storage.finish_agent_step(
+            trend_step,
+            "success",
+            f"Выбрана тема: {selected_item['title']}",
+            {"ideas": ideas, "destinations": destinations},
+        )
+
+        update_studio_state(36, "пишу основу материала")
+        draft_step = agent.storage.create_agent_step(
+            run_id, "Style Writer", "draft_only", "Создаю базовый черновик."
+        )
+        platform = "telegram" if mode == "fast_post" else "blog"
+        try:
+            draft = await asyncio.wait_for(agent.draft(selected_item["id"], platform), timeout=120)
+            draft_id = int(draft["draft_id"])
+            content = clean_article_text(draft["content"])
+            agent.storage.finish_agent_step(
+                draft_step,
+                "success",
+                f"Базовый черновик создан: #{draft_id}.",
+                {"draft_id": draft_id, "platform": platform},
+            )
+        except Exception as exc:  # noqa: BLE001
+            content = fallback_studio_draft(selected_item, mode, topic)
+            draft_id = agent.storage.save_draft(selected_item["id"], platform, content)
+            warnings.append(f"AI draft fallback: {exc}")
+            agent.storage.finish_agent_step(
+                draft_step,
+                "warning",
+                f"AI-черновик не сработал, создан fallback #{draft_id}.",
+                {"draft_id": draft_id, "error": str(exc)},
+            )
+        studio_state.update({"draft_id": draft_id})
+
+        update_studio_state(50, "довожу текст до готовой статьи")
+        rewrite_step = agent.storage.create_agent_step(
+            run_id, "Rewrite Editor", "draft_only", "Делаю рерайт под выбранный режим и тон."
+        )
+        rewrite_instructions = studio_rewrite_instructions(mode, topic, tone)
+        agent.storage.save_draft_revision(draft_id, content, "Перед студийным рерайтом")
+        try:
+            rewritten = await asyncio.wait_for(
+                agent.rewrite(
+                    draft_id,
+                    content,
+                    style_text=active_style_text(),
+                    rewrite_instructions=rewrite_instructions,
+                ),
+                timeout=120,
+            )
+            content = clean_article_text(rewritten["content"])
+            agent.storage.finish_agent_step(
+                rewrite_step,
+                "success",
+                "Текст переписан в финальный черновик без служебных фраз.",
+                {"length": len(content), "tone": tone},
+            )
+        except Exception as exc:  # noqa: BLE001
+            warnings.append(f"Рерайт: {exc}")
+            agent.storage.finish_agent_step(
+                rewrite_step,
+                "warning",
+                "Рерайт не сработал, оставлен базовый черновик.",
+                {"error": str(exc)},
+            )
+
+        if make_research:
+            update_studio_state(62, "собираю research report")
+            research_step = agent.storage.create_agent_step(
+                run_id, "Fact Pack", "read_only", "Фиксирую источники, риски и углы подачи."
+            )
+            report = build_research_report(
+                {"content": content},
+                selected_item,
+                content,
+                "Проверить, почему эта тема может дать читателю практический результат уже сейчас.",
+            )
+            agent.storage.add_research_report(
+                draft_id,
+                selected_item["id"],
+                f"Studio Research: {selected_item['title']}",
+                report,
+            )
+            agent.storage.finish_agent_step(
+                research_step,
+                "success",
+                "Research report добавлен к черновику.",
+                {"source": selected_item.get("url"), "title": selected_item.get("title")},
+            )
+
+        if make_variants:
+            update_studio_state(74, "делаю версии под площадки")
+            variant_step = agent.storage.create_agent_step(
+                run_id, "Platform Packager", "draft_only", "Создаю версии для выбранных площадок."
+            )
+            created_variants = []
+            for destination in destinations:
+                try:
+                    await asyncio.wait_for(
+                        agent.generate_variant(
+                            draft_id,
+                            destination,
+                            content,
+                            style_text=active_style_text(),
+                        ),
+                        timeout=90,
+                    )
+                    created_variants.append(destination)
+                except Exception as exc:  # noqa: BLE001
+                    warnings.append(f"Версия {destination}: {exc}")
+            agent.storage.finish_agent_step(
+                variant_step,
+                "success" if created_variants else "warning",
+                f"Созданы версии: {', '.join(platform_label(item) for item in created_variants) or 'нет'}.",
+                {"created": created_variants, "requested": destinations},
+            )
+
+        if make_compare:
+            update_studio_state(82, "готовлю варианты захода")
+            compare_step = agent.storage.create_agent_step(
+                run_id, "Hook Lab", "draft_only", "Генерирую варианты сильного захода."
+            )
+            try:
+                await asyncio.wait_for(
+                    agent.compare_rewrites(
+                        draft_id,
+                        content,
+                        style_text=active_style_text(),
+                        rewrite_instructions="Сделай 3 версии с разными хуками. Без markdown-разметки и служебных фраз.",
+                        limit=3,
+                    ),
+                    timeout=120,
+                )
+                agent.storage.finish_agent_step(
+                    compare_step,
+                    "success",
+                    "AI Compare добавил варианты захода.",
+                    {"limit": 3},
+                )
+            except Exception as exc:  # noqa: BLE001
+                warnings.append(f"AI Compare: {exc}")
+                agent.storage.finish_agent_step(
+                    compare_step,
+                    "warning",
+                    "AI Compare не сработал.",
+                    {"error": str(exc)},
+                )
+
+        if make_image:
+            update_studio_state(88, "генерирую обложку")
+            image_step = agent.storage.create_agent_step(
+                run_id, "Cover Maker", "draft_only", "Генерирую обложку по теме."
+            )
+            image_prompt = studio_image_prompt(selected_item, mode)
+            try:
+                path, prompt, source = await asyncio.wait_for(
+                    generate_image_for_topic(
+                        selected_item["title"],
+                        selected_item.get("summary", ""),
+                        image_prompt,
+                        settings,
+                        image_config=image_generation_config(),
+                    ),
+                    timeout=120,
+                )
+                agent.storage.save_media_asset(
+                    draft_id=draft_id,
+                    item_id=selected_item["id"],
+                    path=str(path),
+                    prompt=prompt,
+                    source=source,
+                )
+                agent.storage.finish_agent_step(
+                    image_step,
+                    "success",
+                    "Обложка добавлена к черновику.",
+                    {"source": source, "path": str(path)},
+                )
+            except Exception as exc:  # noqa: BLE001
+                warnings.append(f"Картинка: {exc}")
+                agent.storage.finish_agent_step(
+                    image_step,
+                    "warning",
+                    "Картинка не сгенерировалась, материал оставлен без обложки.",
+                    {"error": str(exc)},
+                )
+
+        update_studio_state(96, "считаю готовность")
+        readiness = compute_studio_readiness(draft_id, selected_item, destinations, make_research)
+        studio_state.update({"readiness": readiness})
+        qa_step = agent.storage.create_agent_step(
+            run_id, "Readiness QA", "verification", "Проверяю готовность публикационного пакета."
+        )
+        agent.storage.add_task_note(
+            "Одобрить студийный пакет",
+            "Проверить текст, research report, обложку и нажать «Опубликовать выбранное».",
+            draft_id=draft_id,
+            item_id=selected_item["id"],
+        )
+        agent.storage.finish_agent_step(
+            qa_step,
+            "success" if readiness["score"] >= 75 else "warning",
+            f"Готовность: {readiness['score']}%.",
+            readiness,
+        )
+        agent.storage.finish_agent_run(
+            run_id,
+            "warning" if warnings else "success",
+            f"Студия собрала публикационный пакет: черновик #{draft_id}, готовность {readiness['score']}%.",
+            error="; ".join(warnings[:4]),
+            item_id=selected_item["id"],
+            draft_id=draft_id,
+        )
+        update_studio_state(100, "готово", running=False)
+    except Exception as exc:  # noqa: BLE001
+        studio_state.update({"error": str(exc)})
+        agent.storage.finish_agent_run(
+            run_id,
+            "failed",
+            "Студия остановилась на ошибке.",
+            error=str(exc),
+            item_id=selected_item["id"] if selected_item else None,
+            draft_id=draft_id,
+        )
+        update_studio_state(100, "ошибка", running=False)
+
+
+def update_studio_state(progress: int, stage: str, running: bool = True) -> None:
+    studio_state.update(
+        {
+            "running": running,
+            "progress": max(0, min(100, progress)),
+            "stage": stage,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+    )
+
+
+def select_studio_candidates(topic: str, mode: str) -> list[dict]:
+    query = topic.strip()
+    if query:
+        candidates = agent.storage.list_items(limit=20, query=query)
+        if candidates:
+            return sorted(candidates, key=lambda item: item.get("score") or 0, reverse=True)
+    if mode == "viral":
+        ideas = rank_viral_ideas(agent.storage.list_items(limit=80, query=query or None))
+        id_order = [idea["item_id"] for idea in ideas]
+        items = {item["id"]: item for item in agent.storage.list_items(limit=120)}
+        ranked = [items[item_id] for item_id in id_order if item_id in items]
+        if ranked:
+            return ranked
+    candidates = agent.storage.list_editorial_candidates(limit=30)
+    if candidates:
+        return candidates
+    return agent.storage.list_items(limit=30, query=query or None)
+
+
+def studio_idea_from_item(item: dict, mode: str, topic: str) -> dict:
+    idea = viral_idea_from_item(item)
+    idea["mode"] = mode
+    idea["topic_match"] = bool(topic and topic.lower() in f"{item.get('title', '')} {item.get('summary', '')}".lower())
+    return idea
+
+
+def studio_rewrite_instructions(mode: str, topic: str, tone: str) -> str:
+    mode_rules = {
+        "ai_news": "Сделай готовую статью по AI/dev новости: хук, суть, почему важно, практический вывод, вопрос к аудитории.",
+        "viral": "Найди конфликт и востребованный угол. Сделай материал цепким, но без кликбейта и без недоказанных утверждений.",
+        "github": "Если тема про GitHub или инструмент, объясни что это, кому полезно, как попробовать, где ограничения.",
+        "project": "Пиши как личную историю создания проекта: боль, решение, что пошло не по плану, результат, следующий шаг.",
+        "fast_post": "Сделай короткий готовый пост для Telegram/VK до 1000 символов, с сильной первой строкой.",
+    }
+    tone_rules = {
+        "author": "Тон: живой, личный, практичный, в стиле автора.",
+        "bold": "Тон: смелее, больше позиции, конфликта и ясного авторского вывода.",
+        "calm": "Тон: спокойно, экспертно, без хайпа.",
+        "telegram": "Тон: коротко, разговорно, плотная мысль, без длинных вступлений.",
+    }
+    topic_rule = f"Фокус темы: {topic.strip()}." if topic.strip() else "Фокус темы выбери по самому сильному источнику."
+    return (
+        f"{mode_rules.get(mode, mode_rules['ai_news'])}\n"
+        f"{tone_rules.get(tone, tone_rules['author'])}\n"
+        f"{topic_rule}\n"
+        "Верни только готовый текст публикации. Без markdown-звёздочек, решёток, служебных фраз, <think>, объяснений и подписи 'черновик'. "
+        "Заголовки делай обычными строками, текст удобочитаемым."
+    )
+
+
+def studio_image_prompt(item: dict, mode: str) -> str:
+    title = item.get("title") or "AI editorial agent"
+    mode_hint = {
+        "project": "personal product-building story, developer workspace, tangible progress",
+        "github": "open-source software project, code repository, practical developer tool",
+        "viral": "high-energy editorial cover, technology trend, clear focal object",
+        "fast_post": "clean social media cover, one strong idea, minimal composition",
+    }.get(mode, "AI news editorial cover, practical technology, modern workspace")
+    return (
+        f"{mode_hint}. Topic: {title}. High-quality editorial image, 16:9, no text, no logos, "
+        "realistic or premium product illustration, clear subject, not abstract."
+    )
+
+
+def fallback_studio_draft(item: dict, mode: str, topic: str) -> str:
+    title = item.get("title") or topic.strip() or "Новая тема про ИИ"
+    summary = item.get("summary") or "Описание источника пока короткое, нужна ручная проверка."
+    source = item.get("url") or ""
+    return clean_article_text(
+        f"""
+        {title}
+
+        Я бы взял эту тему в работу, потому что она находится на пересечении ИИ, разработки и практического результата.
+
+        Суть
+        {summary}
+
+        Почему это важно
+        Сейчас аудитории всё меньше интересны абстрактные разговоры про ИИ. Людям нужен понятный результат: что можно собрать, ускорить, проверить или внедрить уже сейчас.
+
+        Мой вывод
+        Эту тему стоит раскрыть не как пересказ новости, а как практический разбор: что внутри, кому полезно, где ограничения и как попробовать.
+
+        Источник
+        {source}
+        """
+    )
+
+
+def compute_studio_readiness(
+    draft_id: int,
+    item: dict,
+    destinations: list[str],
+    research_requested: bool,
+) -> dict:
+    draft = agent.storage.get_draft(draft_id) or {}
+    content = clean_article_text(draft.get("content") or "")
+    variants = agent.storage.list_draft_variants(draft_id)
+    image = agent.storage.get_latest_media_asset(draft_id)
+    reports = agent.storage.list_research_reports(draft_id, limit=1)
+    checks = {
+        "text": min(25, int(len(content) / 80)),
+        "source": 20 if item.get("url") else 5,
+        "variants": 20 if all(destination in variants for destination in destinations) else min(20, len(variants) * 5),
+        "image": 20 if image else 0,
+        "research": 15 if reports or not research_requested else 0,
+    }
+    score = max(0, min(100, sum(checks.values())))
+    return {
+        "score": score,
+        "checks": checks,
+        "destinations": destinations,
+        "has_image": bool(image),
+        "has_research": bool(reports),
+        "text_length": len(content),
+    }
+
+
+def render_studio_item(item: dict) -> str:
+    return f"""
+      <article>
+        <h3>{escape(item.get('title') or '')}</h3>
+        <p>{escape(item.get('source') or '')} · score {escape(str(round(float(item.get('score') or 0), 1)))}</p>
+        <form method="post" action="/admin/studio/start">
+          <input type="hidden" name="mode" value="ai_news">
+          <input type="hidden" name="topic" value="{escape(item.get('title') or '')}">
+          <input type="hidden" name="tone" value="author">
+          <input type="hidden" name="destinations" value="telegram">
+          <input type="hidden" name="destinations" value="blog">
+          <input type="hidden" name="make_research" value="1">
+          <input type="hidden" name="make_variants" value="1">
+          <input type="hidden" name="make_image" value="1">
+          <button type="submit">Собрать из этой темы</button>
+        </form>
+      </article>
+    """
+
+
+def render_studio_result(run: dict) -> str:
+    if not run:
+        return ""
+    draft_id = run.get("draft_id")
+    readiness = compute_studio_readiness(
+        draft_id,
+        agent.storage.get_item(run["item_id"]) if run.get("item_id") else {},
+        ["telegram", "blog"],
+        True,
+    ) if draft_id else {"score": 0, "checks": {}}
+    steps = agent.storage.list_agent_steps(run["id"])
+    return f"""
+      <section class="studio-card result-card">
+        <p class="eyebrow">последний пакет</p>
+        <h2>{escape(run.get('item_title') or 'Публикационный пакет')}</h2>
+        <div class="readiness-bar"><span style="width:{readiness['score']}%"></span></div>
+        <p><strong>Готовность: {readiness['score']}%</strong> · {escape(status_label(run.get('status') or ''))}</p>
+        <p>{escape(run.get('summary') or run.get('objective') or '')}</p>
+        {render_run_pipeline(steps)}
+        <div class="actions">
+          {f'<a class="btn primary" href="/drafts/{draft_id}">Открыть пакет #{draft_id}</a>' if draft_id else ''}
+          <a class="btn" href="/admin/editorial/runs/{run['id']}">Trace</a>
+        </div>
+      </section>
+    """
 
 
 def control_metric(label: str, value: int | str) -> str:
