@@ -63,3 +63,33 @@ def test_normalize_api_key_extracts_openrouter_key():
 def test_articles_are_same_detects_identical_rewrite():
     assert articles_are_same("Один текст\n\nВторой абзац.", "Один текст Второй абзац.")
     assert not articles_are_same("Один текст.", "Совсем другой материал.")
+
+
+def test_is_invalid_model_response_catches_safety_text():
+    from vibe_agent.llm import is_invalid_model_response
+
+    # Exact safety replies
+    assert is_invalid_model_response("User Safety: safe")
+    assert is_invalid_model_response("user safety: unsafe")
+    assert is_invalid_model_response("Safety categories: harassment")
+    assert is_invalid_model_response("Blocked reason: sensitive topic")
+    assert is_invalid_model_response("Finish reason: safety")
+
+    # Valid article-like text should NOT be flagged
+    assert not is_invalid_model_response(
+        "Как я построил AI-базу знаний\n\nСначала выбрал модель..."
+    )
+    assert not is_invalid_model_response(
+        "Сегодня поговорим о новом фреймворке. Он решает старую проблему."
+    )
+    assert not is_invalid_model_response(
+        "User Safety: safe is important to remember"  # not a pure safety response
+    )
+
+
+def test_is_invalid_model_response_catches_empty_and_short():
+    from vibe_agent.llm import is_invalid_model_response
+
+    assert is_invalid_model_response("")
+    assert is_invalid_model_response("   ")
+    assert is_invalid_model_response("\n\n  \n")

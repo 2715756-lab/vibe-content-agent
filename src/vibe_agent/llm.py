@@ -43,6 +43,13 @@ SERVICE_LINE_PATTERNS = [
     r"^</?(think|assistant|user|system)\s*>$",
 ]
 
+INVALID_MODEL_RESPONSE_PATTERNS = [
+    r"^\s*user\s+safety\s*:\s*(?:safe|unsafe)\s*$",
+    r"^\s*safety\s+categories\s*:\s*.+$",
+    r"^\s*blocked\s+reason\s*:\s*.+$",
+    r"^\s*finish\s+reason\s*:\s*safety\s*$",
+]
+
 API_KEY_PATTERNS = [
     r"sk-or-[A-Za-z0-9._-]+",
     r"sk-[A-Za-z0-9._-]+",
@@ -232,6 +239,23 @@ def clean_article_text(content: str) -> str:
     return remove_repeated_prefix(text)
 
 
+def is_invalid_model_response(content: str) -> bool:
+    text = clean_article_text(content)
+    if not text:
+        return True
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if not lines:
+        return True
+    safety_lines = 0
+    for line in lines:
+        if any(re.match(pattern, line, flags=re.IGNORECASE) for pattern in INVALID_MODEL_RESPONSE_PATTERNS):
+            safety_lines += 1
+    if safety_lines and safety_lines == len(lines):
+        return True
+    normalized = re.sub(r"\s+", " ", text).strip().lower()
+    return normalized in {"user safety: safe", "user safety: unsafe"}
+
+
 def strip_markdown_line(line: str) -> str:
     value = line.rstrip()
     value = value.replace("\u2011", "-").replace("\u2010", "-")
@@ -382,7 +406,10 @@ async def generate_draft(
                 ],
                 temperature=0.75,
             )
-            return clean_article_text(content)
+            cleaned = clean_article_text(content)
+            if is_invalid_model_response(cleaned):
+                raise ValueError("model returned a safety/service response instead of article text")
+            return cleaned
         except Exception:
             continue
     return fallback_draft(item, platform, settings)
@@ -460,18 +487,29 @@ async def rewrite_draft(
             ],
             temperature=0.95 if strict else 0.85,
         )
-        return clean_article_text(content)
+        cleaned = clean_article_text(content)
+        if is_invalid_model_response(cleaned):
+            raise ValueError("model returned a safety/service response instead of rewritten text")
+        return cleaned
 
     for config in configs:
         try:
             rewritten = await request_rewrite(config)
             if articles_are_same(cleaned_content, rewritten):
                 rewritten = await request_rewrite(config, strict=True)
+            # Safety / empty responses are not acceptable — keep trying next model
+            if is_invalid_model_response(rewritten):
+                continue
             if not articles_are_same(cleaned_content, rewritten):
                 return clean_article_text(rewritten)
         except Exception:
             continue
-    return fallback_rewrite(cleaned_content, platform, settings, rewrite_instructions)
+    # All models failed — do NOT silently save bad content; return fallback
+    result = fallback_rewrite(cleaned_content, platform, settings, rewrite_instructions)
+    if is_invalid_model_response(result):
+        # Fallback is also bad — return cleaned original rather than corrupt content
+        return cleaned_content
+    return result
 
 
 async def rewrite_compare_candidates(
@@ -546,7 +584,7 @@ async def rewrite_compare_candidates(
             rewritten = await asyncio.wait_for(build_with_config(config, label, approach), timeout=25) if configs else ""
         except Exception:
             rewritten = ""
-        if not rewritten or articles_are_same(cleaned_content, rewritten):
+        if not rewritten or articles_are_same(cleaned_content, rewritten) or is_invalid_model_response(rewritten):
             rewritten = fallback_rewrite(
                 cleaned_content,
                 platform,
@@ -555,6 +593,9 @@ async def rewrite_compare_candidates(
             )
             provider = "fallback"
             model = "local-fallback"
+            # Fallback is also safety/corrupt — skip this candidate entirely
+            if is_invalid_model_response(rewritten):
+                continue
         fingerprint = re.sub(r"\s+", " ", rewritten).strip().lower()[:500]
         if not fingerprint or fingerprint in seen:
             continue
