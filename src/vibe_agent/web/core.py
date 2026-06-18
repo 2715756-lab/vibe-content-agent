@@ -3319,7 +3319,7 @@ def render_draft_page(draft_id: int, platform: str, content: str) -> str:
             <button type="submit" formaction="/drafts/{draft_id}/research">Research Report</button>
             <button type="submit" formaction="/drafts/{draft_id}/variants">Сделать версии под площадки</button>
             <button type="submit" formaction="/drafts/{draft_id}/image/generate">Сгенерировать картинку</button>
-            <button type="submit" formaction="/drafts/{draft_id}/image/generate-batch">4 варианта обложки</button>
+            <button type="submit" formaction="/drafts/{draft_id}/image/generate-batch">Сгенерировать обложку</button>
             <button type="submit" formaction="/drafts/{draft_id}/video/generate">Сделать видео-анонс</button>
             <button type="submit" formaction="/drafts/{draft_id}/growth">Telegram growth brief</button>
             <button type="submit" formaction="/drafts/{draft_id}/image/upload">Загрузить картинку</button>

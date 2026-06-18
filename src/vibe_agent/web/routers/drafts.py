@@ -246,7 +246,7 @@ async def generate_draft_image_batch(
     agent.storage.update_draft_content(draft_id, content)
     created = 0
     errors: list[str] = []
-    for index in range(4):
+    for index in range(1):
         try:
             path, prompt, source = await generate_image_for_topic(
                 item["title"],
