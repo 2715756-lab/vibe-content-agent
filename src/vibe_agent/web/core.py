@@ -954,6 +954,9 @@ def image_generation_config() -> dict:
             "muapi_video_duration",
             "openai_image_api_key",
             "openai_image_model",
+            "custom_image_api_key",
+            "custom_image_base_url",
+            "custom_image_model",
             "custom_image_notes",
         ]
     )
