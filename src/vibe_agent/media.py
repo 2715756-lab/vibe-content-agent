@@ -504,9 +504,11 @@ def image_suffix(image_bytes: bytes) -> str:
 
 def build_image_prompt(title: str, summary: str, prompt: str | None) -> str:
     extra = (prompt or "").strip()
+    # Without an explicit prompt the article title drives the scene, so each
+    # cover reflects the actual subject (e.g. "Математики бьют тревогу..." ->
+    # mathematicians vs AI) instead of a generic builder workspace.
     subject = extra or (
-        "a focused independent builder working with AI agents, source material, notes, "
-        "automation flows and a clean software dashboard in a real modern workspace"
+        f"translate the article title into a concrete visual scene: {title}"
     )
     direction = (
         "Premium editorial cover for a Russian technology and AI article. "
@@ -524,10 +526,16 @@ def build_image_prompt(title: str, summary: str, prompt: str | None) -> str:
         "no fake charts, no distorted hands, no glossy humanoid robots, no cyberpunk city, "
         "no floating glowing brain, no plastic 3D icons, no generic stock photo, no meme style."
     )
+    if extra:
+        return (
+            f"{direction}\n\n"
+            f"Article topic, use as semantic inspiration only, do not render text: {title}\n"
+            f"Context: {(summary or '')[:800]}"
+        )
+    # No user override: the title is already the scene subject above.
     return (
         f"{direction}\n\n"
-        f"Article topic, use as semantic inspiration only, do not render text: {title}\n"
-        f"Context: {(summary or '')[:800]}"
+        f"Additional context (do not render as text): {(summary or '')[:800]}"
     )
 
 
