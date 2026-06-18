@@ -120,6 +120,7 @@ async def publish_vk(
 
 async def publish_max(
     content: str,
+    settings: Settings,
     bot_token: str | None = None,
     chat_ids: list[str] | None = None,
 ) -> dict:
@@ -187,6 +188,7 @@ async def publish(
     if platform == "max":
         return await publish_max(
             content,
+            settings,
             bot_token=overrides.get("max_bot_token"),
             chat_ids=overrides.get("max_chat_ids"),
         )
