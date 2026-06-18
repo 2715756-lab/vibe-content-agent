@@ -275,13 +275,9 @@ def settings_page() -> str:
             <option value="muapi_images" {"selected" if ai_image_provider == "muapi_images" else ""}>MuAPI Images / Video — 200+ моделей</option>
             <option value="cloudflare_worker_images" {"selected" if ai_image_provider == "cloudflare_worker_images" else ""}>Cloudflare Worker Images — бесплатно/быстро</option>
             <option value="openai_images" {"selected" if ai_image_provider == "openai_images" else ""}>OpenAI Images</option>
+            <option value="polza_images" {"selected" if ai_image_provider == "polza_images" else ""}>Polza.AI — Яндекс ART, дешево (2.91₽)</option>
             <option value="custom_notes" {"selected" if ai_image_provider == "custom_notes" else ""}>Custom / внешний генератор</option>
           </select>
-          <script>
-          document.querySelector('select[name="ai_image_provider"]')?.addEventListener('change', function() {
-            document.getElementById('custom_image_settings').style.display = this.value === 'custom_image' ? 'block' : 'none';
-          });
-          </script>
           <div id="custom_image_settings" style="display:{'block' if ai_image_provider == 'custom_image' else 'none'}">
             <label>Custom Image API key</label>
             <input type="password" name="custom_image_api_key" placeholder="{'уже задано' if saved_setting('custom_image_api_key') else 'API key'}" value="{escape(saved_setting('custom_image_api_key', ''))}">
@@ -290,6 +286,32 @@ def settings_page() -> str:
             <label>Custom Image model</label>
             <input name="custom_image_model" value="{escape(saved_setting('custom_image_model', 'google/gemini-3-pro-image'))}">
           </div>
+          <div id="polza_settings" style="display:{'block' if ai_image_provider == 'polza_images' else 'none'}">
+            <label>Polza.AI API key</label>
+            <input type="password" name="polza_api_key" placeholder="{'уже задано' if saved_setting('polza_api_key') else 'pza_...'}" value="{escape(saved_setting('polza_api_key', ''))}">
+            <label>Polza.AI model</label>
+            <input name="polza_model" value="{escape(saved_setting('polza_model', 'yandex/yandex-art'))}">
+            <label>Aspect ratio</label>
+            <select name="polza_aspect_ratio">
+              <option value="16:9" {"selected" if saved_setting('polza_aspect_ratio', '16:9') == '16:9' else ''}>16:9 — обложка статьи</option>
+              <option value="1:1" {"selected" if saved_setting('polza_aspect_ratio') == '1:1' else ''}>1:1 — квадрат</option>
+              <option value="4:5" {"selected" if saved_setting('polza_aspect_ratio') == '4:5' else ''}>4:5 — соцсети</option>
+              <option value="9:16" {"selected" if saved_setting('polza_aspect_ratio') == '9:16' else ''}>9:16 — сторис</option>
+            </select>
+            <p class="hint">Polza.AI — 2.91₽ за картинку, Яндекс ART. API ключ: <code>pza_...</code></p>
+          </div>
+          <script>
+          (function() {{
+            var sel = document.querySelector('select[name="ai_image_provider"]');
+            function toggle() {{
+              var v = sel.value;
+              document.getElementById('custom_image_settings').style.display = v == 'custom_image' ? 'block' : 'none';
+              document.getElementById('polza_settings').style.display = v == 'polza_images' ? 'block' : 'none';
+            }}
+            sel?.addEventListener('change', toggle);
+            toggle();
+          }})();
+          </script>
           <h2>MuAPI медиа</h2>
           <label>MuAPI API key</label>
           <input type="password" name="muapi_api_key" placeholder="{'уже задано' if saved_setting('muapi_api_key') else 'Sandbox или Production key'}">
@@ -639,12 +661,15 @@ async def update_ai_settings(
     custom_image_base_url: str = Form(""),
     custom_image_model: str = Form(""),
     custom_image_notes: str = Form(""),
+    polza_api_key: str = Form(""),
+    polza_model: str = Form("yandex/yandex-art"),
+    polza_aspect_ratio: str = Form("16:9"),
 ) -> RedirectResponse:
     text_provider = ai_text_provider if ai_text_provider in {"openrouter", "gemini", "openai", "custom"} else "openrouter"
     image_provider = (
         ai_image_provider
         if ai_image_provider
-        in {"fallback", "openrouter_images", "custom_image", "muapi_images", "cloudflare_worker_images", "openai_images", "custom_notes"}
+        in {"fallback", "openrouter_images", "custom_image", "muapi_images", "cloudflare_worker_images", "openai_images", "custom_notes", "polza_images"}
         else "fallback"
     )
     values = {
@@ -677,6 +702,8 @@ async def update_ai_settings(
         "custom_image_base_url": custom_image_base_url.strip(),
         "custom_image_model": custom_image_model.strip(),
         "custom_image_notes": custom_image_notes.strip(),
+        "polza_model": polza_model.strip() or "yandex/yandex-art",
+        "polza_aspect_ratio": polza_aspect_ratio.strip() or "16:9",
     }
     for key, value in values.items():
         agent.storage.set_setting(key, value)
@@ -691,6 +718,7 @@ async def update_ai_settings(
         "cloudflare_image_api_key": cloudflare_image_api_key,
         "muapi_api_key": muapi_api_key,
         "custom_image_api_key": custom_image_api_key,
+        "polza_api_key": polza_api_key,
     }
     for key, value in secret_values.items():
         if value.strip():

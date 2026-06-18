@@ -958,6 +958,9 @@ def image_generation_config() -> dict:
             "custom_image_base_url",
             "custom_image_model",
             "custom_image_notes",
+            "polza_api_key",
+            "polza_model",
+            "polza_aspect_ratio",
         ]
     )
 

@@ -140,6 +140,14 @@ async def try_generate_image_provider(
             return path, "muapi_images"
         raise ImageGenerationError("MuAPI не вернул изображение.")
 
+    if provider == "polza_images":
+        image_bytes = await generate_polza_image(prompt, image_config)
+        if image_bytes:
+            path = output_path.with_suffix(image_suffix(image_bytes))
+            path.write_bytes(image_bytes)
+            return path, "polza_images"
+        raise ImageGenerationError("Polza.AI не вернул изображение.")
+
     if provider == "fallback":
         create_fallback_cover(output_path, title)
         return output_path, "fallback"
@@ -452,6 +460,36 @@ async def generate_custom_image(
             if inline.get("data"):
                 return base64.b64decode(inline["data"])
     return None
+
+
+async def generate_polza_image(prompt: str, image_config: dict) -> bytes | None:
+    api_key = image_config.get("polza_api_key")
+    model = image_config.get("polza_model") or "yandex/yandex-art"
+    aspect_ratio = image_config.get("polza_aspect_ratio") or "16:9"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": model,
+        "input": {"prompt": prompt[:500], "aspect_ratio": aspect_ratio, "max_images": 1},
+    }
+    try:
+        async with httpx.AsyncClient(timeout=90) as client:
+            r = await client.post("https://polza.ai/api/v1/media", headers=headers, json=payload)
+            r.raise_for_status()
+            data = r.json()
+            url = (data.get("data") or [{}])[0].get("url")
+            if not url:
+                return None
+            img = await client.get(url, timeout=30)
+            img.raise_for_status()
+            return img.content
+    except httpx.HTTPStatusError as exc:
+        detail = exc.response.text[:300] if exc.response is not None else str(exc)
+        raise ImageGenerationError(f"Polza.AI ответил ошибкой: {detail}") from exc
+    except httpx.RequestError as exc:
+        raise ImageGenerationError(f"Polza.AI недоступен: {exc}") from exc
 
 
 def image_suffix(image_bytes: bytes) -> str:
