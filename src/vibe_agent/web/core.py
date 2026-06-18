@@ -546,6 +546,9 @@ AI_SETTING_KEYS = [
     "muapi_i2v_model",
     "muapi_video_aspect_ratio",
     "muapi_video_duration",
+    "custom_image_api_key",
+    "custom_image_base_url",
+    "custom_image_model",
     "custom_image_notes",
 ]
 

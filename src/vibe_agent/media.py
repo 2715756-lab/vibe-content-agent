@@ -113,6 +113,17 @@ async def try_generate_image_provider(
             return path, "openrouter_images"
         raise ImageGenerationError("OpenRouter Images не вернул изображение.")
 
+    if provider == "custom_image":
+        api_key = image_config.get("custom_image_api_key") or settings.openai_api_key
+        if not api_key:
+            return None
+        image_bytes = await generate_custom_image(prompt, image_config, api_key)
+        if image_bytes:
+            path = output_path.with_suffix(image_suffix(image_bytes))
+            path.write_bytes(image_bytes)
+            return path, "custom_image"
+        raise ImageGenerationError("Custom Image не вернул изображение.")
+
     if provider == "cloudflare_worker_images":
         image_bytes = await generate_cloudflare_worker_image(prompt, image_config)
         if image_bytes:
@@ -398,6 +409,48 @@ async def generate_openrouter_image(
         url = ((image.get("image_url") or image.get("imageUrl") or {}).get("url")) or image.get("url")
         if isinstance(url, str) and url.startswith("data:image"):
             return base64.b64decode(url.split(",", 1)[1])
+    return None
+
+
+async def generate_custom_image(
+    prompt: str,
+    image_config: dict,
+    api_key: str,
+) -> bytes | None:
+    base_url = (image_config.get("custom_image_base_url") or "https://api.openai.com/v1").rstrip("/")
+    model = image_config.get("custom_image_model") or "google/gemini-3-pro-image"
+    modalities = ["image", "text"] if "gemini" in model.lower() else ["image"]
+    payload = {
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}],
+        "modalities": modalities,
+    }
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+    try:
+        async with httpx.AsyncClient(timeout=90) as client:
+            response = await client.post(f"{base_url}/chat/completions", headers=headers, json=payload)
+            response.raise_for_status()
+            data = response.json()
+    except httpx.HTTPStatusError as exc:
+        detail = exc.response.text[:300] if exc.response is not None else str(exc)
+        raise ImageGenerationError(f"Image API ответил ошибкой: {detail}") from exc
+    except httpx.RequestError as exc:
+        raise ImageGenerationError(f"Image API недоступен: {exc}") from exc
+    message = (data.get("choices") or [{}])[0].get("message") or {}
+    for image in message.get("images") or []:
+        url = ((image.get("image_url") or image.get("imageUrl") or {}).get("url")) or image.get("url")
+        if isinstance(url, str) and url.startswith("data:image"):
+            return base64.b64decode(url.split(",", 1)[1])
+    content = message.get("content") or ""
+    parts = content if isinstance(content, list) else []
+    for part in parts:
+        if isinstance(part, dict):
+            inline = part.get("inline_data") or {}
+            if inline.get("data"):
+                return base64.b64decode(inline["data"])
     return None
 
 

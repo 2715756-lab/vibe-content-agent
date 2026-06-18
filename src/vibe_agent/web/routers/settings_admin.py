@@ -271,11 +271,25 @@ def settings_page() -> str:
           <select name="ai_image_provider">
             <option value="fallback" {"selected" if ai_image_provider == "fallback" else ""}>Fallback-обложка без API</option>
             <option value="openrouter_images" {"selected" if ai_image_provider == "openrouter_images" else ""}>OpenRouter Images — качество</option>
+            <option value="custom_image" {"selected" if ai_image_provider == "custom_image" else ""}>Custom Image (OpenAI-совместимый)</option>
             <option value="muapi_images" {"selected" if ai_image_provider == "muapi_images" else ""}>MuAPI Images / Video — 200+ моделей</option>
             <option value="cloudflare_worker_images" {"selected" if ai_image_provider == "cloudflare_worker_images" else ""}>Cloudflare Worker Images — бесплатно/быстро</option>
             <option value="openai_images" {"selected" if ai_image_provider == "openai_images" else ""}>OpenAI Images</option>
             <option value="custom_notes" {"selected" if ai_image_provider == "custom_notes" else ""}>Custom / внешний генератор</option>
           </select>
+          <script>
+          document.querySelector('select[name="ai_image_provider"]')?.addEventListener('change', function() {
+            document.getElementById('custom_image_settings').style.display = this.value === 'custom_image' ? 'block' : 'none';
+          });
+          </script>
+          <div id="custom_image_settings" style="display:{'block' if ai_image_provider == 'custom_image' else 'none'}">
+            <label>Custom Image API key</label>
+            <input type="password" name="custom_image_api_key" placeholder="{'уже задано' if saved_setting('custom_image_api_key') else 'API key'}" value="{escape(saved_setting('custom_image_api_key', ''))}">
+            <label>Custom Image base URL</label>
+            <input name="custom_image_base_url" value="{escape(saved_setting('custom_image_base_url', 'https://inference-api.nousresearch.com/v1'))}">
+            <label>Custom Image model</label>
+            <input name="custom_image_model" value="{escape(saved_setting('custom_image_model', 'google/gemini-3-pro-image'))}">
+          </div>
           <h2>MuAPI медиа</h2>
           <label>MuAPI API key</label>
           <input type="password" name="muapi_api_key" placeholder="{'уже задано' if saved_setting('muapi_api_key') else 'Sandbox или Production key'}">
@@ -621,13 +635,16 @@ async def update_ai_settings(
     muapi_i2v_model: str = Form("wan2.2-image-to-video"),
     muapi_video_aspect_ratio: str = Form("9:16"),
     muapi_video_duration: str = Form("5"),
+    custom_image_api_key: str = Form(""),
+    custom_image_base_url: str = Form(""),
+    custom_image_model: str = Form(""),
     custom_image_notes: str = Form(""),
 ) -> RedirectResponse:
     text_provider = ai_text_provider if ai_text_provider in {"openrouter", "gemini", "openai", "custom"} else "openrouter"
     image_provider = (
         ai_image_provider
         if ai_image_provider
-        in {"fallback", "openrouter_images", "muapi_images", "cloudflare_worker_images", "openai_images", "custom_notes"}
+        in {"fallback", "openrouter_images", "custom_image", "muapi_images", "cloudflare_worker_images", "openai_images", "custom_notes"}
         else "fallback"
     )
     values = {
@@ -657,6 +674,8 @@ async def update_ai_settings(
         "muapi_i2v_model": muapi_i2v_model.strip() or "wan2.2-image-to-video",
         "muapi_video_aspect_ratio": muapi_video_aspect_ratio.strip() or "9:16",
         "muapi_video_duration": muapi_video_duration.strip() or "5",
+        "custom_image_base_url": custom_image_base_url.strip(),
+        "custom_image_model": custom_image_model.strip(),
         "custom_image_notes": custom_image_notes.strip(),
     }
     for key, value in values.items():
@@ -671,6 +690,7 @@ async def update_ai_settings(
         "openai_image_api_key": openai_image_api_key,
         "cloudflare_image_api_key": cloudflare_image_api_key,
         "muapi_api_key": muapi_api_key,
+        "custom_image_api_key": custom_image_api_key,
     }
     for key, value in secret_values.items():
         if value.strip():
