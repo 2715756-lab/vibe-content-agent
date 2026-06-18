@@ -43,6 +43,13 @@ where = ["src"]
 line-length = 100
 target-version = "py311"
 
+[tool.ruff.lint.per-file-ignores]
+# core.py is the shared layer: its imports are deliberately re-exported to the
+# router modules via `from vibe_agent.web.core import *`. Routers rely on that
+# star import for shared symbols (helpers, globals, FastAPI types, stdlib).
+"src/vibe_agent/web/core.py" = ["F401"]
+"src/vibe_agent/web/routers/*.py" = ["F403", "F405"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]

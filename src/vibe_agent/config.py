@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     telegram_bot_token: str | None = None
     telegram_review_chat_id: str | None = None
     telegram_channel_id: str | None = None
+    outbound_proxy: str | None = None
 
     vk_access_token: str | None = None
     vk_owner_id: str | None = None

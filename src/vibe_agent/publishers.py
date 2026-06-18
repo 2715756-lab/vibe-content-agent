@@ -10,6 +10,13 @@ class PublishError(RuntimeError):
     pass
 
 
+def _proxy_client(settings: Settings, timeout: int = 20) -> httpx.AsyncClient:
+    kwargs = {"timeout": timeout}
+    if settings.outbound_proxy:
+        kwargs["proxy"] = settings.outbound_proxy
+    return httpx.AsyncClient(**kwargs)
+
+
 def split_channel_ids(value: str | None) -> list[str]:
     if not value:
         return []
@@ -29,7 +36,7 @@ async def publish_telegram(
         raise PublishError("TELEGRAM_BOT_TOKEN and TELEGRAM_CHANNEL_ID are required")
     results = []
     try:
-        async with httpx.AsyncClient(timeout=20) as client:
+        async with _proxy_client(settings) as client:
             for channel_id in channels:
                 if image_path:
                     if len(content) > TELEGRAM_PHOTO_CAPTION_LIMIT:
@@ -87,7 +94,7 @@ async def publish_vk(
     if not token or not target_owner_id:
         raise PublishError("VK_ACCESS_TOKEN and VK_OWNER_ID are required")
     try:
-        async with httpx.AsyncClient(timeout=20) as client:
+        async with _proxy_client(settings) as client:
             response = await client.post(
                 "https://api.vk.com/method/wall.post",
                 data={
@@ -124,7 +131,7 @@ async def publish_max(
         raise PublishError("MAX принимает текст сообщения до 4000 символов. Сократи версию для MAX.")
     results = []
     try:
-        async with httpx.AsyncClient(timeout=20) as client:
+        async with _proxy_client(settings) as client:
             for chat_id in chats:
                 response = await client.post(
                     "https://platform-api.max.ru/messages",

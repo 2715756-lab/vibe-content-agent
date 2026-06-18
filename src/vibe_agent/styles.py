@@ -28,7 +28,7 @@ def list_styles(settings: Settings) -> list[dict[str, str]]:
     ensure_default_style(settings)
     styles = []
     for path in sorted(settings.style_profiles_dir.glob("*.md")):
-        content = path.read_text(encoding="utf-8")
+        content = path.read_text(encoding="utf-8", errors="replace")
         title = extract_title(content) or path.stem
         styles.append({"id": path.stem, "title": title, "preview": content[:240]})
     return styles
